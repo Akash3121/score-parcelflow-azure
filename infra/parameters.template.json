@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "targetSubscriptionId": {
+      "value": "<subscription-id>"
+    },
+    "targetTenantId": {
+      "value": "<tenant-id>"
+    },
+    "targetResourceGroupName": {
+      "value": "rg-score-parcelflow-demo"
+    },
+    "operatorPrincipalId": {
+      "value": "<operator-object-id>"
+    },
+    "operatorPrincipalType": {
+      "value": "User"
+    },
+    "location": {
+      "value": "centralus"
+    },
+    "kubernetesVersion": {
+      "value": "<supported-version-from-preflight>"
+    },
+    "expirationDate": {
+      "value": "<yyyy-MM-dd>"
+    },
+    "budgetContact": {
+      "value": "<notification-email>"
+    },
+    "deployBudget": {
+      "value": true
+    },
+    "nodeVmSize": {
+      "value": "Standard_D2as_v7"
+    },
+    "postgresSkuName": {
+      "value": "Standard_B1ms"
+    }
+  }
+}
