@@ -1,0 +1,192 @@
+openapi: 3.1.0
+info:
+  title: ParcelFlow API
+  version: 1.0.0
+  description: Demo-sized parcel lifecycle API. All timestamps are UTC RFC 3339 values.
+servers:
+  - url: http://localhost:8080
+paths:
+  /health/live:
+    get:
+      operationId: live
+      responses:
+        "200": {description: Process is live}
+  /health/ready:
+    get:
+      operationId: ready
+      responses:
+        "200": {description: Dependencies are ready}
+        "503": {$ref: "#/components/responses/Problem"}
+  /api/v1/build:
+    get:
+      operationId: getBuild
+      responses:
+        "200":
+          description: Build metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [environment, buildSha]
+                properties:
+                  environment: {type: string}
+                  buildSha: {type: string}
+  /api/v1/parcels:
+    get:
+      operationId: listParcels
+      responses:
+        "200":
+          description: Ordered parcel summary list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, count]
+                properties:
+                  items: {type: array, items: {$ref: "#/components/schemas/Parcel"}}
+                  count: {type: integer, minimum: 0}
+    post:
+      operationId: createParcel
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipientName, deliveryAddress]
+              properties:
+                recipientName: {type: string, minLength: 2, maxLength: 100}
+                deliveryAddress: {type: string, minLength: 8, maxLength: 240}
+      responses:
+        "201": {description: Parcel created, content: {application/json: {schema: {$ref: "#/components/schemas/Parcel"}}}}
+        "200": {description: Idempotent replay, content: {application/json: {schema: {$ref: "#/components/schemas/Parcel"}}}}
+        "400": {$ref: "#/components/responses/Problem"}
+        "409": {$ref: "#/components/responses/Problem"}
+        "422": {$ref: "#/components/responses/Problem"}
+  /api/v1/parcels/{trackingId}:
+    parameters:
+      - {$ref: "#/components/parameters/TrackingId"}
+    get:
+      operationId: getParcel
+      responses:
+        "200": {description: Parcel detail, content: {application/json: {schema: {$ref: "#/components/schemas/Parcel"}}}}
+        "404": {$ref: "#/components/responses/Problem"}
+  /api/v1/parcels/{trackingId}/commands/advance:
+    parameters:
+      - {$ref: "#/components/parameters/TrackingId"}
+    post:
+      operationId: advanceParcel
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      responses:
+        "202": {description: Command accepted, content: {application/json: {schema: {$ref: "#/components/schemas/Command"}}}}
+        "409": {$ref: "#/components/responses/Problem"}
+  /api/v1/parcels/{trackingId}/proof-of-delivery:
+    parameters:
+      - {$ref: "#/components/parameters/TrackingId"}
+    post:
+      operationId: uploadProof
+      parameters:
+        - {$ref: "#/components/parameters/IdempotencyKey"}
+      requestBody:
+        required: true
+        content:
+          application/pdf: {schema: {type: string, format: binary, maxLength: 1048576}}
+          image/jpeg: {schema: {type: string, format: binary, maxLength: 1048576}}
+          image/png: {schema: {type: string, format: binary, maxLength: 1048576}}
+      responses:
+        "201": {description: Proof stored, content: {application/json: {schema: {$ref: "#/components/schemas/Proof"}}}}
+        "200": {description: Matching proof replay, content: {application/json: {schema: {$ref: "#/components/schemas/Proof"}}}}
+        "409": {$ref: "#/components/responses/Problem"}
+        "413": {$ref: "#/components/responses/Problem"}
+        "415": {$ref: "#/components/responses/Problem"}
+    get:
+      operationId: downloadProof
+      responses:
+        "200":
+          description: Private proof attachment
+          headers:
+            Content-Disposition: {schema: {type: string}}
+            X-Content-SHA256: {schema: {type: string}}
+          content:
+            application/pdf: {schema: {type: string, format: binary}}
+            image/jpeg: {schema: {type: string, format: binary}}
+            image/png: {schema: {type: string, format: binary}}
+        "404": {$ref: "#/components/responses/Problem"}
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 8, maxLength: 128}
+    TrackingId:
+      name: trackingId
+      in: path
+      required: true
+      schema: {type: string, pattern: "^PF-[A-Z0-9]{10,24}$"}
+  responses:
+    Problem:
+      description: RFC 7807 problem details
+      content:
+        application/problem+json:
+          schema: {$ref: "#/components/schemas/Problem"}
+  schemas:
+    Status:
+      type: string
+      enum: [label_created, picked_up, at_sorting_center, in_transit, out_for_delivery, delivered]
+    Event:
+      type: object
+      required: [id, toStatus, correlationId, occurredAt]
+      properties:
+        id: {type: string, format: uuid}
+        fromStatus: {$ref: "#/components/schemas/Status"}
+        toStatus: {$ref: "#/components/schemas/Status"}
+        commandId: {type: string, format: uuid}
+        correlationId: {type: string}
+        occurredAt: {type: string, format: date-time}
+    Proof:
+      type: object
+      required: [contentType, filename, sha256, size, uploadedAt]
+      properties:
+        contentType: {type: string, enum: [application/pdf, image/jpeg, image/png]}
+        filename: {type: string}
+        sha256: {type: string, pattern: "^[0-9a-f]{64}$"}
+        size: {type: integer, minimum: 1, maximum: 1048576}
+        uploadedAt: {type: string, format: date-time}
+    Parcel:
+      type: object
+      required: [trackingId, recipientName, deliveryAddress, status, createdAt, updatedAt, events]
+      properties:
+        trackingId: {type: string}
+        recipientName: {type: string}
+        deliveryAddress: {type: string}
+        status: {$ref: "#/components/schemas/Status"}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        events: {type: array, items: {$ref: "#/components/schemas/Event"}}
+        proofOfDelivery: {$ref: "#/components/schemas/Proof"}
+    Command:
+      type: object
+      required: [id, trackingId, fromStatus, toStatus, idempotencyKey, correlationId, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        trackingId: {type: string}
+        fromStatus: {$ref: "#/components/schemas/Status"}
+        toStatus: {$ref: "#/components/schemas/Status"}
+        idempotencyKey: {type: string}
+        correlationId: {type: string}
+        createdAt: {type: string, format: date-time}
+    Problem:
+      type: object
+      required: [type, title, status, detail, instance, requestId]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string}
+        requestId: {type: string}
