@@ -1,0 +1,142 @@
+- uri: template://parcelflow-local/postgres
+  type: postgres
+  class: default
+  description: Provisions a deterministic local PostgreSQL database.
+  state: |
+    service: postgres-{{ .Id | replace "." "-" | lower }}
+    database: parcelflow
+    username: parcelflow
+    password: {{ printf "parcelflow-local-postgres-%s" .Id | sha256sum | trunc 24 | quote }}
+  outputs: |
+    host: {{ .State.service | quote }}
+    port: 5432
+    name: {{ .State.database | quote }}
+    database: {{ .State.database | quote }}
+    username: {{ .State.username | quote }}
+    password: {{ .State.password | quote }}
+  volumes: |
+    {{ .State.service }}-data:
+      driver: local
+  services: |
+    {{ .State.service }}:
+      image: postgres:17.6-alpine3.22
+      restart: unless-stopped
+      labels:
+        dev.score.compose.res.uid: {{ .Uid | quote }}
+      environment:
+        POSTGRES_DB: {{ .State.database | quote }}
+        POSTGRES_USER: {{ .State.username | quote }}
+        POSTGRES_PASSWORD: {{ .State.password | quote }}
+        PGDATA: /var/lib/postgresql/data/pgdata
+      volumes:
+        - type: volume
+          source: {{ .State.service }}-data
+          target: /var/lib/postgresql/data
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+        interval: 3s
+        timeout: 3s
+        retries: 30
+  expected_outputs:
+    - host
+    - port
+    - name
+    - database
+    - username
+    - password
+
+- uri: template://parcelflow-local/message-queue
+  type: message-queue
+  class: default
+  description: Provisions a local RabbitMQ broker and durable command queue.
+  state: |
+    service: rabbitmq-{{ .Id | replace "." "-" | lower }}
+    queue: {{ .Id | replace "." "-" | lower | quote }}
+    username: parcelflow
+    password: {{ printf "parcelflow-local-rabbitmq-%s" .Id | sha256sum | trunc 24 | quote }}
+  outputs: |
+    provider: rabbitmq
+    endpoint: {{ printf "amqp://%s:5672" .State.service | quote }}
+    queue: {{ .State.queue | quote }}
+    credentialMode: password
+    username: {{ .State.username | quote }}
+    password: {{ .State.password | quote }}
+  volumes: |
+    {{ .State.service }}-data:
+      driver: local
+  services: |
+    {{ .State.service }}:
+      image: rabbitmq:4.1.3-management-alpine
+      restart: unless-stopped
+      labels:
+        dev.score.compose.res.uid: {{ .Uid | quote }}
+      environment:
+        RABBITMQ_DEFAULT_VHOST: /
+        RABBITMQ_DEFAULT_USER: {{ .State.username | quote }}
+        RABBITMQ_DEFAULT_PASS: {{ .State.password | quote }}
+      volumes:
+        - type: volume
+          source: {{ .State.service }}-data
+          target: /var/lib/rabbitmq
+      healthcheck:
+        test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+        interval: 3s
+        timeout: 5s
+        retries: 30
+  expected_outputs:
+    - provider
+    - endpoint
+    - queue
+    - credentialMode
+    - username
+    - password
+
+- uri: template://parcelflow-local/object-store
+  type: object-store
+  class: default
+  description: Provisions a local Azurite Blob service for proof objects.
+  state: |
+    service: azurite-{{ .Id | replace "." "-" | lower }}
+    container: proofs
+    accountName: parcelflowlocal
+    accountKey: {{ printf "parcelflow-local-azurite-%s" .Id | sha256sum | b64enc | quote }}
+  outputs: |
+    provider: azurite
+    endpoint: {{ printf "http://%s:10000/%s" .State.service .State.accountName | quote }}
+    container: {{ .State.container | quote }}
+    credentialMode: shared-key
+    accountName: {{ .State.accountName | quote }}
+    accountKey: {{ .State.accountKey | quote }}
+  volumes: |
+    {{ .State.service }}-data:
+      driver: local
+  services: |
+    {{ .State.service }}:
+      image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+      restart: unless-stopped
+      labels:
+        dev.score.compose.res.uid: {{ .Uid | quote }}
+      environment:
+        AZURITE_ACCOUNTS: {{ printf "%s:%s" .State.accountName .State.accountKey | quote }}
+      entrypoint: ["azurite-blob"]
+      command: ["--blobHost", "0.0.0.0", "--location", "/data", "--loose"]
+      volumes:
+        - type: volume
+          source: {{ .State.service }}-data
+          target: /data
+      healthcheck:
+        test:
+          - CMD
+          - node
+          - -e
+          - "const n=require('net').connect(10000,'127.0.0.1');n.on('connect',()=>{n.end();process.exit(0)});n.on('error',()=>process.exit(1))"
+        interval: 3s
+        timeout: 3s
+        retries: 30
+  expected_outputs:
+    - provider
+    - endpoint
+    - container
+    - credentialMode
+    - accountName
+    - accountKey

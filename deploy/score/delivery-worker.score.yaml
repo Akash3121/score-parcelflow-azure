@@ -1,0 +1,43 @@
+apiVersion: score.dev/v1b1
+metadata:
+  name: delivery-worker
+containers:
+  delivery-worker:
+    image: .
+    variables:
+      DATABASE_HOST: ${resources.database.host}
+      DATABASE_PORT: ${resources.database.port}
+      DATABASE_NAME: ${resources.database.name}
+      DATABASE_USER: ${resources.database.username}
+      DATABASE_PASSWORD: ${resources.database.password}
+      DATABASE_SSLMODE: require
+      QUEUE_PROVIDER: ${resources.commands.provider}
+      QUEUE_ENDPOINT: ${resources.commands.endpoint}
+      QUEUE_NAME: ${resources.commands.queue}
+      QUEUE_CREDENTIAL_MODE: ${resources.commands.credentialMode}
+      QUEUE_USERNAME: ${resources.commands.username}
+      QUEUE_PASSWORD: ${resources.commands.password}
+      ENVIRONMENT: demo
+      BUILD_SHA: local
+    livenessProbe:
+      exec:
+        command: ["/bin/sh", "-ec", "kill -0 1"]
+    readinessProbe:
+      exec:
+        command: ["/bin/sh", "-ec", "kill -0 1"]
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+resources:
+  database:
+    type: postgres
+    class: default
+    id: parcelflow-database
+  commands:
+    type: message-queue
+    class: default
+    id: parcelflow-commands

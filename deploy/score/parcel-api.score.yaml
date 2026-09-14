@@ -1,0 +1,61 @@
+apiVersion: score.dev/v1b1
+metadata:
+  name: parcel-api
+containers:
+  parcel-api:
+    image: .
+    variables:
+      DATABASE_HOST: ${resources.database.host}
+      DATABASE_PORT: ${resources.database.port}
+      DATABASE_NAME: ${resources.database.name}
+      DATABASE_USER: ${resources.database.username}
+      DATABASE_PASSWORD: ${resources.database.password}
+      DATABASE_SSLMODE: require
+      QUEUE_PROVIDER: ${resources.commands.provider}
+      QUEUE_ENDPOINT: ${resources.commands.endpoint}
+      QUEUE_NAME: ${resources.commands.queue}
+      QUEUE_CREDENTIAL_MODE: ${resources.commands.credentialMode}
+      QUEUE_USERNAME: ${resources.commands.username}
+      QUEUE_PASSWORD: ${resources.commands.password}
+      OBJECT_STORE_PROVIDER: ${resources.proofs.provider}
+      OBJECT_STORE_ENDPOINT: ${resources.proofs.endpoint}
+      OBJECT_STORE_CONTAINER: ${resources.proofs.container}
+      OBJECT_STORE_CREDENTIAL_MODE: ${resources.proofs.credentialMode}
+      OBJECT_STORE_ACCOUNT_NAME: ${resources.proofs.accountName}
+      OBJECT_STORE_ACCOUNT_KEY: ${resources.proofs.accountKey}
+      HTTP_PORT: "8080"
+      ENVIRONMENT: demo
+      BUILD_SHA: local
+    livenessProbe:
+      httpGet:
+        path: /health/live
+        port: 8080
+    readinessProbe:
+      httpGet:
+        path: /health/ready
+        port: 8080
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+service:
+  ports:
+    http:
+      port: 8080
+      targetPort: 8080
+resources:
+  database:
+    type: postgres
+    class: default
+    id: parcelflow-database
+  commands:
+    type: message-queue
+    class: default
+    id: parcelflow-commands
+  proofs:
+    type: object-store
+    class: default
+    id: parcelflow-proofs
