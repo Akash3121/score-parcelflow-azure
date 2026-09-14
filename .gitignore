@@ -1,0 +1,37 @@
+# Go
+bin/
+coverage.out
+*.test
+
+# Score state and generated output
+.score-compose/
+.score-k8s/
+.kind/
+compose.yaml
+manifests.yaml
+*.generated.yaml
+deploy-output*.json
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.local.json
+*.secrets.json
+kubeconfig*
+
+# Test and runtime data
+.tmp/
+tmp/
+dist/
+artifacts/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Azure
+.azure/
+*.bicepparam.local
