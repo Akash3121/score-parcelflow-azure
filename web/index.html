@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="ParcelFlow delivery lifecycle demonstration">
+  <title>ParcelFlow</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="/" aria-label="ParcelFlow home"><span aria-hidden="true">▰</span> ParcelFlow</a>
+    <p>Portable delivery operations</p>
+  </header>
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div><p class="eyebrow">LIVE DELIVERY NETWORK</p><h1 id="hero-title">Every parcel.<br><em>Clearly moving.</em></h1>
+      <p>Follow deterministic demo shipments across the complete delivery lifecycle.</p></div>
+      <form id="create-form">
+        <h2>Create a shipment</h2>
+        <label>Recipient <input name="recipientName" minlength="2" maxlength="100" required autocomplete="name"></label>
+        <label>Delivery address <textarea name="deliveryAddress" minlength="8" maxlength="240" required autocomplete="street-address"></textarea></label>
+        <button type="submit">Create label</button>
+        <p id="form-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+    <section aria-labelledby="shipments-title">
+      <div class="section-heading"><div><p class="eyebrow">OPERATIONS</p><h2 id="shipments-title">Active shipments</h2></div><button id="refresh" class="secondary">Refresh</button></div>
+      <div id="error" class="error" role="alert" hidden></div>
+      <div id="parcels" class="grid" aria-live="polite"></div>
+    </section>
+  </main>
+  <footer>ParcelFlow reference application · Fictional data only</footer>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
