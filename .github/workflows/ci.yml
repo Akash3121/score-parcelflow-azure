@@ -1,0 +1,180 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCORE_COMPOSE_VERSION: 0.47.0
+  SCORE_K8S_VERSION: 0.18.0
+  KIND_VERSION: v0.33.0
+
+jobs:
+  go:
+    name: Go and containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify formatting
+        shell: bash
+        run: |
+          test -z "$(gofmt -l ./cmd ./internal)"
+
+      - name: Test, vet, and build
+        shell: bash
+        run: |
+          go test ./...
+          go vet ./...
+          go build ./cmd/...
+
+      - name: Build API image
+        run: docker build --build-arg TARGET=api --tag parcelflow/parcel-api:${{ github.sha }} .
+
+      - name: Build worker image
+        run: docker build --build-arg TARGET=worker --tag parcelflow/delivery-worker:${{ github.sha }} .
+
+  compose:
+    name: Score Compose smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install verified score-compose
+        shell: bash
+        run: |
+          archive="score-compose_${SCORE_COMPOSE_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/score-spec/score-compose/releases/download/${SCORE_COMPOSE_VERSION}"
+          curl --fail --silent --show-error --location --remote-name "${base}/${archive}"
+          curl --fail --silent --show-error --location --remote-name "${base}/checksums.txt"
+          grep " ${archive}$" checksums.txt | sha256sum --check
+          tar --extract --gzip --file "${archive}"
+          sudo install score-compose /usr/local/bin/score-compose
+          score-compose version
+
+      - name: Run local end-to-end test
+        shell: pwsh
+        run: |
+          try {
+            ./scripts/local/up.ps1
+            ./scripts/local/smoke.ps1
+          }
+          finally {
+            ./scripts/local/down.ps1
+          }
+
+  kind:
+    name: Score Kubernetes smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install verified score-k8s
+        shell: bash
+        run: |
+          archive="score-k8s_${SCORE_K8S_VERSION}_linux_amd64.tar.gz"
+          base="https://github.com/score-spec/score-k8s/releases/download/${SCORE_K8S_VERSION}"
+          curl --fail --silent --show-error --location --remote-name "${base}/${archive}"
+          curl --fail --silent --show-error --location --remote-name "${base}/checksums.txt"
+          grep " ${archive}$" checksums.txt | sha256sum --check
+          tar --extract --gzip --file "${archive}"
+          sudo install score-k8s /usr/local/bin/score-k8s
+          score-k8s version
+
+      - name: Install Kind
+        run: |
+          go install sigs.k8s.io/kind@${KIND_VERSION}
+          kind version
+
+      - name: Run Kind end-to-end test
+        shell: pwsh
+        run: |
+          try {
+            ./scripts/local/kind-up.ps1
+            ./scripts/local/kind-smoke.ps1
+          }
+          finally {
+            ./scripts/local/kind-down.ps1
+          }
+
+  infrastructure:
+    name: Bicep and PowerShell
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install pinned Bicep
+        run: az bicep install --version v0.44.1
+
+      - name: Build Bicep
+        shell: pwsh
+        run: |
+          az bicep build --file ./infra/main.bicep --outfile ./infra/main.json
+          if ($LASTEXITCODE -ne 0) {
+            throw "Bicep build failed for infra/main.bicep"
+          }
+          Get-ChildItem ./infra/modules -Filter *.bicep -Recurse | ForEach-Object {
+            az bicep build --file $_.FullName --stdout | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+              throw "Bicep build failed for $($_.FullName)"
+            }
+          }
+
+      - name: Parse PowerShell
+        shell: pwsh
+        run: |
+          Get-ChildItem ./scripts -Filter *.ps1 -Recurse | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) | Out-Null
+            if ($errors.Count -gt 0) {
+              $errors | ForEach-Object { Write-Error $_.Message }
+              throw "PowerShell parse failed for $($_.FullName)"
+            }
+          }
+
+      - name: Upload generated infrastructure template
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bicep-template
+          path: infra/main.json
+          if-no-files-found: error
